@@ -137,6 +137,7 @@ fi
 
 if [ -n "$git_cmd" ] ; then
 	git=`$git_cmd rev-parse --verify --short HEAD 2>/dev/null`
+	git_branch=`$git_cmd branch --list |grep '^* ' |awk '{print $2}' 2>/dev/null`
 	svn=`$git_cmd svn find-rev $git 2>/dev/null`
 	if [ -n "$svn" ] ; then
 		svn=" r${svn}"
@@ -159,6 +160,9 @@ if [ -n "$git_cmd" ] ; then
 	if $git_cmd --work-tree=${SYSDIR}/.. diff-index \
 	    --name-only HEAD | read dummy; then
 		git="${git}-dirty"
+	fi
+	if [ -n "$git_branch" ]; then
+		git="${git}-${git_branch}"
 	fi
 fi
 
