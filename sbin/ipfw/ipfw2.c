@@ -254,6 +254,7 @@ static struct _s_x rule_actions[] = {
 	{ "deny",		TOK_DENY },
 	{ "drop",		TOK_DENY },
 	{ "reject",		TOK_REJECT },
+	{ "reset-cookie",	TOK_RESETCOOKIE },
 	{ "reset6",		TOK_RESET6 },
 	{ "reset",		TOK_RESET },
 	{ "unreach6",		TOK_UNREACH6 },
@@ -1218,6 +1219,11 @@ show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 			else
 				print_reject_code(cmd->arg1);
 			break;
+
+		case O_RESETCOOKIE:
+			printf("reset-cookie");
+			break;
+
 
 		case O_UNREACH6:
 			if (cmd->arg1 == ICMP6_UNREACH_RST)
@@ -2949,6 +2955,10 @@ ipfw_add(char *av[])
 	case TOK_REJECT:
 		action->opcode = O_REJECT;
 		action->arg1 = ICMP_UNREACH_HOST;
+		break;
+
+	case TOK_RESETCOOKIE:
+		action->opcode = O_RESETCOOKIE;
 		break;
 
 	case TOK_RESET:

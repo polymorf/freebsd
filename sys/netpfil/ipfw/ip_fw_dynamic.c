@@ -686,6 +686,7 @@ ipfw_install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 
 	switch (cmd->o.opcode) {
 	case O_KEEP_STATE:	/* bidir rule */
+	case O_RESETCOOKIE:	/* bidir rule */
 		q = add_dyn_rule(&args->f_id, i, O_KEEP_STATE, rule);
 		break;
 
@@ -909,6 +910,122 @@ ipfw_send_pkt(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_t seq,
 		th->th_ack = htonl(ack);
 		th->th_flags = TH_ACK;
 	}
+
+	switch (id->addr_type) {
+	case 4:
+		th->th_sum = in_cksum(m, len);
+
+		/* finish the ip header */
+		h->ip_v = 4;
+		h->ip_hl = sizeof(*h) >> 2;
+		h->ip_tos = IPTOS_LOWDELAY;
+		h->ip_off = htons(0);
+		h->ip_len = htons(len);
+		h->ip_ttl = V_ip_defttl;
+		h->ip_sum = 0;
+		break;
+#ifdef INET6
+	case 6:
+		th->th_sum = in6_cksum(m, IPPROTO_TCP, sizeof(*h6),
+		    sizeof(struct tcphdr));
+
+		/* finish the ip6 header */
+		h6->ip6_vfc |= IPV6_VERSION;
+		h6->ip6_hlim = IPV6_DEFHLIM;
+		break;
+#endif
+	}
+
+	return (m);
+}
+
+/*
+ * TODO
+ */
+struct mbuf *
+ipfw_send_pkt_bad_synack(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_t seq,
+    u_int32_t ack, int flags)
+{
+	struct mbuf *m = NULL;		/* stupid compiler */
+	int len;
+	struct ip *h = NULL;		/* stupid compiler */
+#ifdef INET6
+	struct ip6_hdr *h6 = NULL;
+#endif
+	struct tcphdr *th = NULL;
+
+	MGETHDR(m, M_NOWAIT, MT_DATA);
+	if (m == NULL) {
+		printf("m is NULL return NULL\n");
+		return (NULL);
+	}
+
+	M_SETFIB(m, id->fib);
+#ifdef MAC
+	if (replyto != NULL)
+		mac_netinet_firewall_reply(replyto, m);
+	else
+		mac_netinet_firewall_send(m);
+#else
+	(void)replyto;		/* don't warn about unused arg */
+#endif
+
+	switch (id->addr_type) {
+	case 4:
+		len = sizeof(struct ip) + sizeof(struct tcphdr);
+		break;
+#ifdef INET6
+	case 6:
+		len = sizeof(struct ip6_hdr) + sizeof(struct tcphdr);
+		break;
+#endif
+	default:
+		/* XXX: log me?!? */
+		FREE_PKT(m);
+		return (NULL);
+	}
+
+	m->m_data += max_linkhdr;
+	m->m_flags |= M_SKIP_FIREWALL;
+	m->m_pkthdr.len = m->m_len = len;
+	m->m_pkthdr.rcvif = NULL;
+	bzero(m->m_data, len);
+
+	switch (id->addr_type) {
+	case 4:
+		h = mtod(m, struct ip *);
+
+		/* prepare for checksum */
+		h->ip_p = IPPROTO_TCP;
+		h->ip_len = htons(sizeof(struct tcphdr));
+		h->ip_src.s_addr = htonl(id->dst_ip);
+		h->ip_dst.s_addr = htonl(id->src_ip);
+
+		th = (struct tcphdr *)(h + 1);
+		break;
+#ifdef INET6
+	case 6:
+		h6 = mtod(m, struct ip6_hdr *);
+
+		/* prepare for checksum */
+		h6->ip6_nxt = IPPROTO_TCP;
+		h6->ip6_plen = htons(sizeof(struct tcphdr));
+		h6->ip6_src = id->dst_ip6;
+		h6->ip6_dst = id->src_ip6;
+
+		th = (struct tcphdr *)(h6 + 1);
+		break;
+#endif
+	}
+
+	th->th_sport = htons(id->dst_port);
+	th->th_dport = htons(id->src_port);
+	th->th_off = sizeof(struct tcphdr) >> 2;
+
+	seq++;
+	th->th_ack = htonl(65535);
+	th->th_seq = htonl(0);
+	th->th_flags = TH_SYN | TH_ACK;
 
 	switch (id->addr_type) {
 	case 4:

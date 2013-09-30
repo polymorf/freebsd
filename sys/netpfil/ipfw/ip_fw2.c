@@ -649,6 +649,42 @@ send_reject(struct ip_fw_args *args, int code, int iplen, struct ip *ip)
 }
 
 /*
+ * sends a SYN/ACK reply to SYN packet, containing syncookie as seq number, and a bad ack seq number to force a RST
+ * from client
+ */
+static void
+send_bad_synack(struct ip_fw_args *args, int iplen, struct ip *ip)
+{
+
+#if 0
+	/* XXX When ip is not guaranteed to be at mtod() we will
+	 * need to account for this */
+	 * The mbuf will however be thrown away so we can adjust it.
+	 * Remember we did an m_pullup on it already so we
+	 * can make some assumptions about contiguousness.
+	 */
+	if (args->L3offset)
+		m_adj(m, args->L3offset);
+#endif
+	if (args->f_id.proto == IPPROTO_TCP) {
+		struct tcphdr *const tcp =
+		    L3HDR(struct tcphdr, mtod(args->m, struct ip *));
+		if ( (tcp->th_flags & (TH_SYN | TH_ACK) ) == TH_SYN) {
+			struct mbuf *m;
+			/* Need to generate cookie */
+			m = ipfw_send_pkt_bad_synack(args->m, &(args->f_id),
+				ntohl(tcp->th_seq), ntohl(tcp->th_ack),
+				tcp->th_flags | TH_ACK);
+			if (m != NULL)
+				ip_output(m, NULL, NULL, 0, NULL, NULL);
+		}
+		FREE_PKT(args->m);
+	} else
+		FREE_PKT(args->m);
+	args->m = NULL;
+}
+
+/*
  * Support for uid/gid/jail lookup. These tests are expensive
  * (because we may need to look into the list of active sockets)
  * so we cache the results. ugid_lookupp is 0 if we have not
@@ -2289,6 +2325,49 @@ do {								\
 				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
 					send_reject(args, cmd->arg1, iplen, ip);
 					m = args->m;
+				}
+				/* FALLTHROUGH */
+
+			case O_RESETCOOKIE:
+				/*
+				 * Drop the packet and send a SYN/ACK reply
+				 * if the packet is TCP and have SYN bit set and
+				 * ACK unset, and it is not multicast/broadcast.
+				 */
+				if (hlen > 0 && is_ipv4 && offset == 0 &&
+				    (proto == IPPROTO_TCP &&
+				    ((TCP(ulp)->th_flags == TH_SYN) || (TCP(ulp)->th_flags == TH_RST))) &&
+				    !(m->m_flags & (M_BCAST|M_MCAST)) &&
+				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
+					uint32_t key = src_ip.s_addr;
+					uint32_t v = 0;
+					match = ipfw_lookup_table(chain, 1, key, &v);
+					if (!match) {
+						if (TCP(ulp)->th_flags == TH_SYN) {
+							send_bad_synack(args, iplen, ip);
+							m = args->m;
+						}
+						if (TCP(ulp)->th_flags == TH_RST) {
+							if ( ntohl(TCP(ulp)->th_seq) == 65535 ) { /* Need to check cookie */
+								/* TODO */
+								if (ipfw_install_state(f,
+								    (ipfw_insn_limit *)cmd, args, tablearg)) {
+									/* error or limit violation */
+									printf("ERROR in install_state\n");
+								}
+								retval = IP_FW_DENY;
+								l = 0;		/* exit inner loop */
+								done = 1;	/* exit outer loop */
+								break;
+							}
+						}
+					}else{
+						printf("Addr found in table -> allow packet\n");
+						retval = IP_FW_PASS;
+						l = 0;		/* exit inner loop */
+						done = 1;	/* exit outer loop */
+						break;
+					}
 				}
 				/* FALLTHROUGH */
 #ifdef INET6

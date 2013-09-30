@@ -312,6 +312,11 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
 					cmd->arg1);
 			break;
 
+		case O_RESETCOOKIE:
+			action = "reset-cookie";
+			break;
+
+
 		case O_UNREACH6:
 			if (cmd->arg1==ICMP6_UNREACH_RST)
 				action = "Reset";

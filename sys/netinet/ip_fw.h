@@ -163,6 +163,7 @@ enum ipfw_opcodes {		/* arguments (4 byte each)	*/
 	O_ACCEPT,		/* none				*/
 	O_DENY,			/* none 			*/
 	O_REJECT,		/* arg1=icmp arg (same as deny)	*/
+	O_RESETCOOKIE,		/* none				*/
 	O_COUNT,		/* none				*/
 	O_SKIPTO,		/* arg1=next rule number	*/
 	O_PIPE,			/* arg1=pipe number		*/

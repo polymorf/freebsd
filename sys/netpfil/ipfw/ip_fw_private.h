@@ -182,6 +182,8 @@ void ipfw_dyn_unlock(ipfw_dyn_rule *q);
 struct tcphdr;
 struct mbuf *ipfw_send_pkt(struct mbuf *, struct ipfw_flow_id *,
     u_int32_t, u_int32_t, int);
+struct mbuf *ipfw_send_pkt_bad_synack(struct mbuf *, struct ipfw_flow_id *,
+    u_int32_t, u_int32_t, int);
 int ipfw_install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
     struct ip_fw_args *args, uint32_t tablearg);
 ipfw_dyn_rule *ipfw_lookup_dyn_rule(struct ipfw_flow_id *pkt,
