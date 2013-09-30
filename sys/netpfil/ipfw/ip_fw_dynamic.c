@@ -148,6 +148,7 @@ static VNET_DEFINE(u_int32_t, dyn_fin_lifetime);
 static VNET_DEFINE(u_int32_t, dyn_rst_lifetime);
 static VNET_DEFINE(u_int32_t, dyn_udp_lifetime);
 static VNET_DEFINE(u_int32_t, dyn_short_lifetime);
+static VNET_DEFINE(u_int32_t, dyn_reset_cookie_lifetime);
 
 #define	V_dyn_ack_lifetime		VNET(dyn_ack_lifetime)
 #define	V_dyn_syn_lifetime		VNET(dyn_syn_lifetime)
@@ -155,6 +156,7 @@ static VNET_DEFINE(u_int32_t, dyn_short_lifetime);
 #define	V_dyn_rst_lifetime		VNET(dyn_rst_lifetime)
 #define	V_dyn_udp_lifetime		VNET(dyn_udp_lifetime)
 #define	V_dyn_short_lifetime		VNET(dyn_short_lifetime)
+#define	V_dyn_reset_cookie_lifetime		VNET(dyn_reset_cookie_lifetime)
 
 /*
  * Keepalives are sent if dyn_keepalive is set. They are sent every
@@ -222,6 +224,9 @@ SYSCTL_VNET_UINT(_net_inet_ip_fw, OID_AUTO, dyn_udp_lifetime,
 SYSCTL_VNET_UINT(_net_inet_ip_fw, OID_AUTO, dyn_short_lifetime,
     CTLFLAG_RW, &VNET_NAME(dyn_short_lifetime), 0,
     "Lifetime of dyn. rules for other situations");
+SYSCTL_VNET_UINT(_net_inet_ip_fw, OID_AUTO, dyn_reset_cookie_lifetime,
+    CTLFLAG_RW, &VNET_NAME(dyn_reset_cookie_lifetime), 0,
+    "Lifetime of dyn. rules who pass reset cookie challenge");
 SYSCTL_VNET_UINT(_net_inet_ip_fw, OID_AUTO, dyn_keepalive,
     CTLFLAG_RW, &VNET_NAME(dyn_keepalive), 0,
     "Enable keepalives for dyn. rules");
@@ -329,7 +334,7 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 		if (IS_IP6_FLOW_ID(pkt)) {
 			if (IN6_ARE_ADDR_EQUAL(&pkt->src_ip6, &q->id.src_ip6) &&
 			    IN6_ARE_ADDR_EQUAL(&pkt->dst_ip6, &q->id.dst_ip6) &&
-			    pkt->src_port == q->id.src_port &&
+			    (pkt->src_port == q->id.src_port || q->dyn_type == O_RESETCOOKIE) &&
 			    pkt->dst_port == q->id.dst_port) {
 				dir = MATCH_FORWARD;
 				break;
@@ -344,7 +349,7 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 		} else {
 			if (pkt->src_ip == q->id.src_ip &&
 			    pkt->dst_ip == q->id.dst_ip &&
-			    pkt->src_port == q->id.src_port &&
+			    (pkt->src_port == q->id.src_port || q->dyn_type == O_RESETCOOKIE) &&
 			    pkt->dst_port == q->id.dst_port) {
 				dir = MATCH_FORWARD;
 				break;
@@ -366,7 +371,7 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 		q->next = V_ipfw_dyn_v[i].head;
 		V_ipfw_dyn_v[i].head = q;
 	}
-	if (pkt->proto == IPPROTO_TCP) { /* update state according to flags */
+	if (pkt->proto == IPPROTO_TCP && q->dyn_type != O_RESETCOOKIE ) { /* update state according to flags */
 		uint32_t ack;
 		u_char flags = pkt->_flags & (TH_FIN | TH_SYN | TH_RST);
 
@@ -430,6 +435,8 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 			q->expire = time_uptime + V_dyn_rst_lifetime;
 			break;
 		}
+	} else if (pkt->proto == IPPROTO_TCP && q->dyn_type == O_RESETCOOKIE) {
+		q->expire = time_uptime + V_dyn_reset_cookie_lifetime;
 	} else if (pkt->proto == IPPROTO_UDP) {
 		q->expire = time_uptime + V_dyn_udp_lifetime;
 	} else {
@@ -659,8 +666,16 @@ ipfw_install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 	int i;
 
 	DEB(print_dyn_rule(&args->f_id, cmd->o.opcode, "install_state", "");)
-	
-	i = hash_packet(&args->f_id, V_curr_dyn_buckets);
+
+	if ( cmd->o.opcode == O_RESETCOOKIE ) {
+		struct ipfw_flow_id id;
+		memcpy(&id,&args->f_id,sizeof(id));
+		id.src_port=0;
+		i = hash_packet(&id, V_curr_dyn_buckets);
+		printf("install state i=%d\n",i);
+	}else {
+		i = hash_packet(&args->f_id, V_curr_dyn_buckets);
+	}
 
 	IPFW_BUCK_LOCK(i);
 
@@ -686,9 +701,13 @@ ipfw_install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 
 	switch (cmd->o.opcode) {
 	case O_KEEP_STATE:	/* bidir rule */
-	case O_RESETCOOKIE:	/* bidir rule */
 		q = add_dyn_rule(&args->f_id, i, O_KEEP_STATE, rule);
 		break;
+
+	case O_RESETCOOKIE: {	/* bidir rule */
+		q = add_dyn_rule(&args->f_id, i, O_RESETCOOKIE, rule);
+		break;
+	}
 
 	case O_LIMIT: {		/* limit number of sessions */
 		struct ipfw_flow_id id;
@@ -1023,7 +1042,7 @@ ipfw_send_pkt_bad_synack(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_
 	th->th_off = sizeof(struct tcphdr) >> 2;
 
 	seq++;
-	th->th_ack = htonl(65535);
+	th->th_ack = htonl(65535); /* TODO: Generate a cookie */
 	th->th_seq = htonl(0);
 	th->th_flags = TH_SYN | TH_ACK;
 
@@ -1433,6 +1452,7 @@ ipfw_dyn_init(struct ip_fw_chain *chain)
         V_dyn_rst_lifetime = 1;
         V_dyn_udp_lifetime = 10;
         V_dyn_short_lifetime = 5;
+        V_dyn_reset_cookie_lifetime = 300;
 
         V_dyn_keepalive_interval = 20;
         V_dyn_keepalive_period = 5;

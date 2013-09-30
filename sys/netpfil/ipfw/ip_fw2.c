@@ -2339,34 +2339,38 @@ do {								\
 				    ((TCP(ulp)->th_flags == TH_SYN) || (TCP(ulp)->th_flags == TH_RST))) &&
 				    !(m->m_flags & (M_BCAST|M_MCAST)) &&
 				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
-					uint32_t key = src_ip.s_addr;
-					uint32_t v = 0;
-					match = ipfw_lookup_table(chain, 1, key, &v);
-					if (!match) {
+					struct ipfw_flow_id id;
+					memcpy(&id,&args->f_id,sizeof(id));
+					id.src_port=0;
+					if (dyn_dir == MATCH_UNKNOWN &&
+					    (q = ipfw_lookup_dyn_rule(&id,
+					     &dyn_dir, proto == IPPROTO_TCP ?
+						TCP(ulp) : NULL))
+						!= NULL) {
+						/*
+						 * Found dynamic entry, update stats
+						 */
+						IPFW_INC_DYN_COUNTER(q, pktlen);
+						ipfw_dyn_unlock(q);
+						retval = IP_FW_PASS;
+						l = 0;		/* exit inner loop */
+						done = 1;	/* exit outer loop */
+
+						break;
+					}else{
 						if (TCP(ulp)->th_flags == TH_SYN) {
 							send_bad_synack(args, iplen, ip);
 							m = args->m;
 						}
 						if (TCP(ulp)->th_flags == TH_RST) {
-							if ( ntohl(TCP(ulp)->th_seq) == 65535 ) { /* Need to check cookie */
-								/* TODO */
-								if (ipfw_install_state(f,
-								    (ipfw_insn_limit *)cmd, args, tablearg)) {
-									/* error or limit violation */
-									printf("ERROR in install_state\n");
-								}
+							if ( ntohl(TCP(ulp)->th_seq) == 65535 ) { /* TODO: Need to check cookie */
+								ipfw_install_state(f, (ipfw_insn_limit *)cmd, args, tablearg);
 								retval = IP_FW_DENY;
 								l = 0;		/* exit inner loop */
 								done = 1;	/* exit outer loop */
 								break;
 							}
 						}
-					}else{
-						printf("Addr found in table -> allow packet\n");
-						retval = IP_FW_PASS;
-						l = 0;		/* exit inner loop */
-						done = 1;	/* exit outer loop */
-						break;
 					}
 				}
 				/* FALLTHROUGH */

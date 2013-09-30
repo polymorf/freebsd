@@ -1816,6 +1816,9 @@ show_dyn_ipfw(ipfw_dyn_rule *d, int pcwidth, int bcwidth)
 	case O_KEEP_STATE: /* bidir, no mask */
 		printf(" STATE");
 		break;
+	case O_RESETCOOKIE:
+		printf(" RESET-COOKIE-SUCCESS");
+		break;
 	}
 
 	if ((pe = getprotobynumber(d->id.proto)) != NULL)
