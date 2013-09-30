@@ -672,7 +672,6 @@ ipfw_install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 		memcpy(&id,&args->f_id,sizeof(id));
 		id.src_port=0;
 		i = hash_packet(&id, V_curr_dyn_buckets);
-		printf("install state i=%d\n",i);
 	}else {
 		i = hash_packet(&args->f_id, V_curr_dyn_buckets);
 	}
@@ -974,10 +973,8 @@ ipfw_send_pkt_bad_synack(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_
 	struct tcphdr *th = NULL;
 
 	MGETHDR(m, M_NOWAIT, MT_DATA);
-	if (m == NULL) {
-		printf("m is NULL return NULL\n");
+	if (m == NULL)
 		return (NULL);
-	}
 
 	M_SETFIB(m, id->fib);
 #ifdef MAC
