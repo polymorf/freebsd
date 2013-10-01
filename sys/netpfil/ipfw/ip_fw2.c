@@ -2144,7 +2144,10 @@ do {								\
 					}else{
 						if (TCP(ulp)->th_flags == TH_SYN) {
 							send_bad_synack(args, iplen, ip, 65535); /* TODO: Need to generate cookie */
-							m = args->m;
+							retval = IP_FW_DENY;
+							l = 0;		/* exit inner loop */
+							done = 1;	/* exit outer loop */
+							break;
 						}
 						if (TCP(ulp)->th_flags == TH_RST) {
 							if ( ntohl(TCP(ulp)->th_seq) == 65535 ) { /* TODO: Need to check cookie */
