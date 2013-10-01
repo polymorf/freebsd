@@ -2339,7 +2339,7 @@ do {								\
 				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
 					struct ipfw_flow_id id;
 					memcpy(&id,&args->f_id,sizeof(id));
-					id.src_port=0;
+					id.src_port=0;	/* we force src_port = 0, to match all src_port in dyn rules */
 					if (dyn_dir == MATCH_UNKNOWN &&
 					    (q = ipfw_lookup_dyn_rule(&id,
 					     &dyn_dir, proto == IPPROTO_TCP ?
