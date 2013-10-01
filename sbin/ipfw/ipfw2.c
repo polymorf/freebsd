@@ -254,7 +254,6 @@ static struct _s_x rule_actions[] = {
 	{ "deny",		TOK_DENY },
 	{ "drop",		TOK_DENY },
 	{ "reject",		TOK_REJECT },
-	{ "reset-cookie",	TOK_RESETCOOKIE },
 	{ "reset6",		TOK_RESET6 },
 	{ "reset",		TOK_RESET },
 	{ "unreach6",		TOK_UNREACH6 },
@@ -295,6 +294,7 @@ static struct _s_x rule_options[] = {
 	{ "in",			TOK_IN },
 	{ "limit",		TOK_LIMIT },
 	{ "keep-state",		TOK_KEEPSTATE },
+	{ "reset-cookie",	TOK_RESETCOOKIE },
 	{ "bridged",		TOK_LAYER2 },
 	{ "layer2",		TOK_LAYER2 },
 	{ "out",		TOK_OUT },
@@ -1220,11 +1220,6 @@ show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 				print_reject_code(cmd->arg1);
 			break;
 
-		case O_RESETCOOKIE:
-			printf("reset-cookie");
-			break;
-
-
 		case O_UNREACH6:
 			if (cmd->arg1 == ICMP6_UNREACH_RST)
 				printf("reset6");
@@ -1719,6 +1714,10 @@ show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 
 			case O_NOP:
 				comment = (char *)(cmd + 1);
+				break;
+
+			case O_RESETCOOKIE:
+				printf(" reset-cookie");
 				break;
 
 			case O_KEEP_STATE:
@@ -2960,10 +2959,6 @@ ipfw_add(char *av[])
 		action->arg1 = ICMP_UNREACH_HOST;
 		break;
 
-	case TOK_RESETCOOKIE:
-		action->opcode = O_RESETCOOKIE;
-		break;
-
 	case TOK_RESET:
 		action->opcode = O_REJECT;
 		action->arg1 = ICMP_REJECT_RST;
@@ -3736,6 +3731,17 @@ read_options:
 			fill_cmd(cmd, O_KEEP_STATE, 0, 0);
 			break;
 
+		case TOK_RESETCOOKIE:
+			if (open_par)
+				errx(EX_USAGE, "reset-cookie cannot be part "
+				    "of an or block");
+			if (have_state)
+				errx(EX_USAGE, "only one of reset-cookie "
+					"and limit is allowed");
+			have_state = cmd;
+			fill_cmd(cmd, O_RESETCOOKIE, 0, 0);
+			break;
+
 		case TOK_LIMIT: {
 			ipfw_insn_limit *c = (ipfw_insn_limit *)cmd;
 			int val;
@@ -3975,6 +3981,7 @@ done:
 		switch (src->opcode) {
 		case O_LOG:
 		case O_KEEP_STATE:
+		case O_RESETCOOKIE:
 		case O_LIMIT:
 		case O_ALTQ:
 		case O_TAG:

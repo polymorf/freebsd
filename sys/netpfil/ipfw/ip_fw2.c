@@ -2338,20 +2338,30 @@ do {								\
 				    !(m->m_flags & (M_BCAST|M_MCAST)) &&
 				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
 					args->f_id.src_port=0;	/* we force src_port = 0, to match all src_port in dyn rules */
-					if (dyn_dir == MATCH_UNKNOWN &&
-					    (q = ipfw_lookup_dyn_rule(&args->f_id,
+					if ((q = ipfw_lookup_dyn_rule(&args->f_id,
 					     &dyn_dir, proto == IPPROTO_TCP ?
 						TCP(ulp) : NULL))
 						!= NULL) {
 						/*
 						 * Found dynamic entry, update stats
+						 * and jump to the 'action' part of
+						 * the parent rule by setting
+						 * f, cmd, l and clearing cmdlen.
 						 */
 						IPFW_INC_DYN_COUNTER(q, pktlen);
+						/* XXX we would like to have f_pos
+						 * readily accessible in the dynamic
+						 * rule, instead of having to
+						 * lookup q->rule.
+						 */
+						f = q->rule;
+						f_pos = ipfw_find_rule(chain,
+							f->rulenum, f->id);
+						cmd = ACTION_PTR(f);
+						l = f->cmd_len - f->act_ofs;
 						ipfw_dyn_unlock(q);
-						retval = IP_FW_PASS;
-						l = 0;		/* exit inner loop */
-						done = 1;	/* exit outer loop */
-
+						cmdlen = 0;
+						match = 1;
 						break;
 					}else{
 						if (TCP(ulp)->th_flags == TH_SYN) {

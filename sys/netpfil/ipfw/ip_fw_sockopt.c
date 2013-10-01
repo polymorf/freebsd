@@ -553,6 +553,7 @@ check_ipfw_struct(struct ip_fw *rule, int size)
 		switch (cmd->opcode) {
 		case O_PROBE_STATE:
 		case O_KEEP_STATE:
+		case O_RESETCOOKIE:
 		case O_PROTO:
 		case O_IP_SRC_ME:
 		case O_IP_DST_ME:
@@ -744,7 +745,6 @@ check_ipfw_struct(struct ip_fw *rule, int size)
 		case O_ACCEPT:
 		case O_DENY:
 		case O_REJECT:
-		case O_RESETCOOKIE:
 		case O_SETDSCP:
 #ifdef INET6
 		case O_UNREACH6:
