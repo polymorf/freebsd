@@ -2337,11 +2337,9 @@ do {								\
 				    ((TCP(ulp)->th_flags == TH_SYN) || (TCP(ulp)->th_flags == TH_RST))) &&
 				    !(m->m_flags & (M_BCAST|M_MCAST)) &&
 				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
-					struct ipfw_flow_id id;
-					memcpy(&id,&args->f_id,sizeof(id));
-					id.src_port=0;	/* we force src_port = 0, to match all src_port in dyn rules */
+					args->f_id.src_port=0;	/* we force src_port = 0, to match all src_port in dyn rules */
 					if (dyn_dir == MATCH_UNKNOWN &&
-					    (q = ipfw_lookup_dyn_rule(&id,
+					    (q = ipfw_lookup_dyn_rule(&args->f_id,
 					     &dyn_dir, proto == IPPROTO_TCP ?
 						TCP(ulp) : NULL))
 						!= NULL) {
@@ -2362,6 +2360,7 @@ do {								\
 						}
 						if (TCP(ulp)->th_flags == TH_RST) {
 							if ( ntohl(TCP(ulp)->th_seq) == 65535 ) { /* TODO: Need to check cookie */
+								args->f_id.src_port=0;	/* we install a state with src_port=0 */
 								ipfw_install_state(f, (ipfw_insn_limit *)cmd, args, tablearg);
 								retval = IP_FW_DENY;
 								l = 0;		/* exit inner loop */

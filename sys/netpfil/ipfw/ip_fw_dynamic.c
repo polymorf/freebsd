@@ -667,14 +667,7 @@ ipfw_install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 
 	DEB(print_dyn_rule(&args->f_id, cmd->o.opcode, "install_state", "");)
 
-	if ( cmd->o.opcode == O_RESETCOOKIE ) {
-		struct ipfw_flow_id id;
-		memcpy(&id,&args->f_id,sizeof(id));
-		id.src_port=0;	/* we install a state for all src_port */
-		i = hash_packet(&id, V_curr_dyn_buckets);
-	}else {
-		i = hash_packet(&args->f_id, V_curr_dyn_buckets);
-	}
+	i = hash_packet(&args->f_id, V_curr_dyn_buckets);
 
 	IPFW_BUCK_LOCK(i);
 
