@@ -2380,7 +2380,6 @@ do {								\
 					m = args->m;
 				}
 				/* FALLTHROUGH */
-
 #ifdef INET6
 			case O_UNREACH6:
 				if (hlen > 0 && is_ipv6 &&
