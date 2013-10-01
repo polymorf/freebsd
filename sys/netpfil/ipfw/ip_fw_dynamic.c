@@ -666,7 +666,7 @@ ipfw_install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 	int i;
 
 	DEB(print_dyn_rule(&args->f_id, cmd->o.opcode, "install_state", "");)
-
+	
 	i = hash_packet(&args->f_id, V_curr_dyn_buckets);
 
 	IPFW_BUCK_LOCK(i);
