@@ -649,16 +649,17 @@ send_reject(struct ip_fw_args *args, int code, int iplen, struct ip *ip)
 }
 
 /*
- * sends a SYN/ACK reply to SYN packet, containing syncookie as seq number, and a bad ack seq number to force a RST
- * from client
+ * sends a SYN/ACK reply to SYN packet, containing syncookie as
+ * ack number, this ack number is of course wrong, we expect a
+ * RST from the client with the syncookie as seq number.
  */
 static void
-send_bad_synack(struct ip_fw_args *args, int iplen, struct ip *ip)
+send_bad_synack(struct ip_fw_args *args, int iplen, struct ip *ip, u_int32_t cookie)
 {
 
 #if 0
 	/* XXX When ip is not guaranteed to be at mtod() we will
-	 * need to account for this */
+	 * need to account for this
 	 * The mbuf will however be thrown away so we can adjust it.
 	 * Remember we did an m_pullup on it already so we
 	 * can make some assumptions about contiguousness.
@@ -671,16 +672,13 @@ send_bad_synack(struct ip_fw_args *args, int iplen, struct ip *ip)
 		    L3HDR(struct tcphdr, mtod(args->m, struct ip *));
 		if ( (tcp->th_flags & (TH_SYN | TH_ACK) ) == TH_SYN) {
 			struct mbuf *m;
-			/* Need to generate cookie */
-			m = ipfw_send_pkt_bad_synack(args->m, &(args->f_id),
-				ntohl(tcp->th_seq), ntohl(tcp->th_ack),
-				tcp->th_flags | TH_ACK);
+			/* TODO: Need to generate cookie */
+			m = ipfw_send_pkt_bad_synack(args->m, &(args->f_id),cookie);
 			if (m != NULL)
 				ip_output(m, NULL, NULL, 0, NULL, NULL);
 		}
-		FREE_PKT(args->m);
-	} else
-		FREE_PKT(args->m);
+	}
+	FREE_PKT(args->m);
 	args->m = NULL;
 }
 
@@ -2359,7 +2357,7 @@ do {								\
 						break;
 					}else{
 						if (TCP(ulp)->th_flags == TH_SYN) {
-							send_bad_synack(args, iplen, ip);
+							send_bad_synack(args, iplen, ip, 65535); /* TODO: Need to generate cookie */
 							m = args->m;
 						}
 						if (TCP(ulp)->th_flags == TH_RST) {

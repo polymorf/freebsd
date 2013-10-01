@@ -958,11 +958,14 @@ ipfw_send_pkt(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_t seq,
 }
 
 /*
- * TODO
+ * Generate a TCP packet, with SYN and ACK flag set, and a bad ack number as
+ * cookie. This will force a RST packet on real client.
+ * The 'replyto' mbuf is the mbuf being replied to, if any, and is required
+ * so that MAC can label the reply appropriately.
  */
 struct mbuf *
-ipfw_send_pkt_bad_synack(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_t seq,
-    u_int32_t ack, int flags)
+ipfw_send_pkt_bad_synack(struct mbuf *replyto, struct ipfw_flow_id *id,
+    u_int32_t cookie)
 {
 	struct mbuf *m = NULL;		/* stupid compiler */
 	int len;
@@ -1038,8 +1041,7 @@ ipfw_send_pkt_bad_synack(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_
 	th->th_dport = htons(id->src_port);
 	th->th_off = sizeof(struct tcphdr) >> 2;
 
-	seq++;
-	th->th_ack = htonl(65535); /* TODO: Generate a cookie */
+	th->th_ack = htonl(cookie);
 	th->th_seq = htonl(0);
 	th->th_flags = TH_SYN | TH_ACK;
 
