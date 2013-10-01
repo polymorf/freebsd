@@ -2104,6 +2104,61 @@ do {								\
 				match = 1;
 				break;
 
+			case O_RESETCOOKIE:
+				/*
+				 * Drop the packet and send a SYN/ACK reply
+				 * if the packet is TCP and have SYN bit set and
+				 * ACK unset, and it is not multicast/broadcast.
+				 */
+				if (hlen > 0 && is_ipv4 && offset == 0 &&
+				    (proto == IPPROTO_TCP &&
+				    ((TCP(ulp)->th_flags == TH_SYN) || (TCP(ulp)->th_flags == TH_RST))) &&
+				    !(m->m_flags & (M_BCAST|M_MCAST)) &&
+				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
+					args->f_id.src_port=0;	/* we force src_port = 0, to match all src_port in dyn rules */
+					if ((q = ipfw_lookup_dyn_rule(&args->f_id,
+					     &dyn_dir, proto == IPPROTO_TCP ?
+						TCP(ulp) : NULL))
+						!= NULL) {
+						/*
+						 * Found dynamic entry, update stats
+						 * and jump to the 'action' part of
+						 * the parent rule by setting
+						 * f, cmd, l and clearing cmdlen.
+						 */
+						IPFW_INC_DYN_COUNTER(q, pktlen);
+						/* XXX we would like to have f_pos
+						 * readily accessible in the dynamic
+						 * rule, instead of having to
+						 * lookup q->rule.
+						 */
+						f = q->rule;
+						f_pos = ipfw_find_rule(chain,
+							f->rulenum, f->id);
+						cmd = ACTION_PTR(f);
+						l = f->cmd_len - f->act_ofs;
+						ipfw_dyn_unlock(q);
+						cmdlen = 0;
+						match = 1;
+						break;
+					}else{
+						if (TCP(ulp)->th_flags == TH_SYN) {
+							send_bad_synack(args, iplen, ip, 65535); /* TODO: Need to generate cookie */
+							m = args->m;
+						}
+						if (TCP(ulp)->th_flags == TH_RST) {
+							if ( ntohl(TCP(ulp)->th_seq) == 65535 ) { /* TODO: Need to check cookie */
+								args->f_id.src_port=0;	/* we install a state with src_port=0 */
+								ipfw_install_state(f, (ipfw_insn_limit *)cmd, args, tablearg);
+								retval = IP_FW_DENY;
+								l = 0;		/* exit inner loop */
+								done = 1;	/* exit outer loop */
+								break;
+							}
+						}
+					}
+				}
+
 			case O_PROBE_STATE:
 			case O_CHECK_STATE:
 				/*
@@ -2326,61 +2381,6 @@ do {								\
 				}
 				/* FALLTHROUGH */
 
-			case O_RESETCOOKIE:
-				/*
-				 * Drop the packet and send a SYN/ACK reply
-				 * if the packet is TCP and have SYN bit set and
-				 * ACK unset, and it is not multicast/broadcast.
-				 */
-				if (hlen > 0 && is_ipv4 && offset == 0 &&
-				    (proto == IPPROTO_TCP &&
-				    ((TCP(ulp)->th_flags == TH_SYN) || (TCP(ulp)->th_flags == TH_RST))) &&
-				    !(m->m_flags & (M_BCAST|M_MCAST)) &&
-				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
-					args->f_id.src_port=0;	/* we force src_port = 0, to match all src_port in dyn rules */
-					if ((q = ipfw_lookup_dyn_rule(&args->f_id,
-					     &dyn_dir, proto == IPPROTO_TCP ?
-						TCP(ulp) : NULL))
-						!= NULL) {
-						/*
-						 * Found dynamic entry, update stats
-						 * and jump to the 'action' part of
-						 * the parent rule by setting
-						 * f, cmd, l and clearing cmdlen.
-						 */
-						IPFW_INC_DYN_COUNTER(q, pktlen);
-						/* XXX we would like to have f_pos
-						 * readily accessible in the dynamic
-						 * rule, instead of having to
-						 * lookup q->rule.
-						 */
-						f = q->rule;
-						f_pos = ipfw_find_rule(chain,
-							f->rulenum, f->id);
-						cmd = ACTION_PTR(f);
-						l = f->cmd_len - f->act_ofs;
-						ipfw_dyn_unlock(q);
-						cmdlen = 0;
-						match = 1;
-						break;
-					}else{
-						if (TCP(ulp)->th_flags == TH_SYN) {
-							send_bad_synack(args, iplen, ip, 65535); /* TODO: Need to generate cookie */
-							m = args->m;
-						}
-						if (TCP(ulp)->th_flags == TH_RST) {
-							if ( ntohl(TCP(ulp)->th_seq) == 65535 ) { /* TODO: Need to check cookie */
-								args->f_id.src_port=0;	/* we install a state with src_port=0 */
-								ipfw_install_state(f, (ipfw_insn_limit *)cmd, args, tablearg);
-								retval = IP_FW_DENY;
-								l = 0;		/* exit inner loop */
-								done = 1;	/* exit outer loop */
-								break;
-							}
-						}
-					}
-				}
-				/* FALLTHROUGH */
 #ifdef INET6
 			case O_UNREACH6:
 				if (hlen > 0 && is_ipv6 &&
