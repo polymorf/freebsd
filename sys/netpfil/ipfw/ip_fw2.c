@@ -2115,31 +2115,13 @@ do {								\
 				    ((TCP(ulp)->th_flags == TH_SYN) || (TCP(ulp)->th_flags == TH_RST))) &&
 				    !(m->m_flags & (M_BCAST|M_MCAST)) &&
 				    !IN_MULTICAST(ntohl(dst_ip.s_addr))) {
-					args->f_id.src_port=0;	/* we force src_port = 0, to match all src_port in dyn rules */
-					if ((q = ipfw_lookup_dyn_rule(&args->f_id,
-					     &dyn_dir, proto == IPPROTO_TCP ?
-						TCP(ulp) : NULL))
-						!= NULL) {
-						/*
-						 * Found dynamic entry, update stats
-						 * and jump to the 'action' part of
-						 * the parent rule by setting
-						 * f, cmd, l and clearing cmdlen.
-						 */
-						IPFW_INC_DYN_COUNTER(q, pktlen);
-						/* XXX we would like to have f_pos
-						 * readily accessible in the dynamic
-						 * rule, instead of having to
-						 * lookup q->rule.
-						 */
-						f = q->rule;
-						f_pos = ipfw_find_rule(chain,
-							f->rulenum, f->id);
-						cmd = ACTION_PTR(f);
-						l = f->cmd_len - f->act_ofs;
-						ipfw_dyn_unlock(q);
-						cmdlen = 0;
-						match = 1;
+					uint32_t key = src_ip.s_addr;
+					uint32_t v = 0;
+					int intable = ipfw_lookup_table(chain, 1, key, &v); /* TODO: get table number */
+					if (intable) {
+						retval = IP_FW_PASS;
+						l = 0;    /* exit inner loop */
+						done = 1;  /* exit outer loop */
 						break;
 					}else{
 						if (TCP(ulp)->th_flags == TH_SYN) {
@@ -2151,8 +2133,7 @@ do {								\
 						}
 						if (TCP(ulp)->th_flags == TH_RST) {
 							if ( ntohl(TCP(ulp)->th_seq) == 65535 ) { /* TODO: Need to check cookie */
-								args->f_id.src_port=0;	/* we install a state with src_port=0 */
-								ipfw_install_state(f, (ipfw_insn_limit *)cmd, args, tablearg);
+								/* TODO: Add to table */
 								retval = IP_FW_DENY;
 								l = 0;		/* exit inner loop */
 								done = 1;	/* exit outer loop */
