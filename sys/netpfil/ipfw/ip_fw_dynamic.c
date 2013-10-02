@@ -366,7 +366,7 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 		q->next = V_ipfw_dyn_v[i].head;
 		V_ipfw_dyn_v[i].head = q;
 	}
-	if (pkt->proto == IPPROTO_TCP && q->dyn_type) { /* update state according to flags */
+	if (pkt->proto == IPPROTO_TCP) { /* update state according to flags */
 		uint32_t ack;
 		u_char flags = pkt->_flags & (TH_FIN | TH_SYN | TH_RST);
 
