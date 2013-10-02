@@ -334,7 +334,7 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 		if (IS_IP6_FLOW_ID(pkt)) {
 			if (IN6_ARE_ADDR_EQUAL(&pkt->src_ip6, &q->id.src_ip6) &&
 			    IN6_ARE_ADDR_EQUAL(&pkt->dst_ip6, &q->id.dst_ip6) &&
-			    (pkt->src_port == q->id.src_port || q->dyn_type == O_RESETCOOKIE) &&
+			    pkt->src_port == q->id.src_port &&
 			    pkt->dst_port == q->id.dst_port) {
 				dir = MATCH_FORWARD;
 				break;
@@ -349,7 +349,7 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 		} else {
 			if (pkt->src_ip == q->id.src_ip &&
 			    pkt->dst_ip == q->id.dst_ip &&
-			    (pkt->src_port == q->id.src_port || q->dyn_type == O_RESETCOOKIE) &&
+			    pkt->src_port == q->id.src_port &&
 			    pkt->dst_port == q->id.dst_port) {
 				dir = MATCH_FORWARD;
 				break;
