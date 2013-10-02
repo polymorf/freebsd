@@ -148,7 +148,6 @@ static VNET_DEFINE(u_int32_t, dyn_fin_lifetime);
 static VNET_DEFINE(u_int32_t, dyn_rst_lifetime);
 static VNET_DEFINE(u_int32_t, dyn_udp_lifetime);
 static VNET_DEFINE(u_int32_t, dyn_short_lifetime);
-static VNET_DEFINE(u_int32_t, dyn_reset_cookie_lifetime);
 
 #define	V_dyn_ack_lifetime		VNET(dyn_ack_lifetime)
 #define	V_dyn_syn_lifetime		VNET(dyn_syn_lifetime)
@@ -156,7 +155,6 @@ static VNET_DEFINE(u_int32_t, dyn_reset_cookie_lifetime);
 #define	V_dyn_rst_lifetime		VNET(dyn_rst_lifetime)
 #define	V_dyn_udp_lifetime		VNET(dyn_udp_lifetime)
 #define	V_dyn_short_lifetime		VNET(dyn_short_lifetime)
-#define	V_dyn_reset_cookie_lifetime		VNET(dyn_reset_cookie_lifetime)
 
 /*
  * Keepalives are sent if dyn_keepalive is set. They are sent every
@@ -224,9 +222,6 @@ SYSCTL_VNET_UINT(_net_inet_ip_fw, OID_AUTO, dyn_udp_lifetime,
 SYSCTL_VNET_UINT(_net_inet_ip_fw, OID_AUTO, dyn_short_lifetime,
     CTLFLAG_RW, &VNET_NAME(dyn_short_lifetime), 0,
     "Lifetime of dyn. rules for other situations");
-SYSCTL_VNET_UINT(_net_inet_ip_fw, OID_AUTO, dyn_reset_cookie_lifetime,
-    CTLFLAG_RW, &VNET_NAME(dyn_reset_cookie_lifetime), 0,
-    "Lifetime of dyn. rules who pass reset cookie challenge");
 SYSCTL_VNET_UINT(_net_inet_ip_fw, OID_AUTO, dyn_keepalive,
     CTLFLAG_RW, &VNET_NAME(dyn_keepalive), 0,
     "Enable keepalives for dyn. rules");
@@ -371,7 +366,7 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 		q->next = V_ipfw_dyn_v[i].head;
 		V_ipfw_dyn_v[i].head = q;
 	}
-	if (pkt->proto == IPPROTO_TCP && q->dyn_type != O_RESETCOOKIE ) { /* update state according to flags */
+	if (pkt->proto == IPPROTO_TCP && q->dyn_type) { /* update state according to flags */
 		uint32_t ack;
 		u_char flags = pkt->_flags & (TH_FIN | TH_SYN | TH_RST);
 
@@ -435,8 +430,6 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int i, int *match_direction,
 			q->expire = time_uptime + V_dyn_rst_lifetime;
 			break;
 		}
-	} else if (pkt->proto == IPPROTO_TCP && q->dyn_type == O_RESETCOOKIE) {
-		q->expire = time_uptime + V_dyn_reset_cookie_lifetime;
 	} else if (pkt->proto == IPPROTO_UDP) {
 		q->expire = time_uptime + V_dyn_udp_lifetime;
 	} else {
@@ -695,11 +688,6 @@ ipfw_install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 	case O_KEEP_STATE:	/* bidir rule */
 		q = add_dyn_rule(&args->f_id, i, O_KEEP_STATE, rule);
 		break;
-
-	case O_RESETCOOKIE: {	/* bidir rule */
-		q = add_dyn_rule(&args->f_id, i, O_RESETCOOKIE, rule);
-		break;
-	}
 
 	case O_LIMIT: {		/* limit number of sessions */
 		struct ipfw_flow_id id;
@@ -1444,7 +1432,6 @@ ipfw_dyn_init(struct ip_fw_chain *chain)
         V_dyn_rst_lifetime = 1;
         V_dyn_udp_lifetime = 10;
         V_dyn_short_lifetime = 5;
-        V_dyn_reset_cookie_lifetime = 300;
 
         V_dyn_keepalive_interval = 20;
         V_dyn_keepalive_period = 5;
